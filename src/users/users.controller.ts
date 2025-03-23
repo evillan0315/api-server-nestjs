@@ -1,8 +1,9 @@
-import { Controller, Post, Get, Param, Put, Delete, Body, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Param, Put, Delete, Body, Req, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { CreateUserDto, UpdateUserDto } from './dto/users.dto';
 import { UsersService } from './users.service';
 import { CognitoAuthGuard } from '../auth/jwt-auth.guard/jwt-auth.guard.guard';
+import { Request } from 'express';
 
 @ApiTags('Users')
 @ApiBearerAuth() // Enables JWT authentication in Swagger
@@ -10,7 +11,15 @@ import { CognitoAuthGuard } from '../auth/jwt-auth.guard/jwt-auth.guard.guard';
 @UseGuards(CognitoAuthGuard) // Protect all routes
 export class UsersController {
   constructor(private readonly userService: UsersService) {}
-
+  @Get('me')
+  @ApiOperation({ summary: 'Get current logged-in user' })
+  @ApiResponse({ status: 200, description: 'Returns the current user profile' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getProfile(@Req() request: Request) {
+   //return this.userService.getUser(request?.user)
+    return this.userService.getProfile(request.user);
+  }
+  
   @Post()
   @ApiOperation({ summary: 'Create a new user' })
   @ApiBody({ type: CreateUserDto })

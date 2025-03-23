@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { Message, Chat, ApiUsage } from '@prisma/client'; 
 import fs from "fs";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { ApiTags  } from '@nestjs/swagger';
 import { fileURLToPath } from "url";
 import { dirname } from 'path';
 
@@ -14,7 +15,7 @@ const idirname = dirname(__filename);
 import * as dotenv from 'dotenv';
 
 dotenv.config();
-
+@ApiTags('Google Gemini')
 @Injectable()
 export class GoogleGeminiService {
   private readonly apiKey = process.env.GOOGLE_GEMINI_API_KEY;

@@ -11,9 +11,10 @@ import { ChatgptModule } from './chatgpt/chatgpt.module';
 import { GoogleGeminiModule } from './google-gemini/google-gemini.module';
 import { WebsocketModule } from './websocket/websocket.module';
 import { DynamoDBModule } from './dynamodb/dynamodb.module';
+import { SwingerModule } from './swinger/swinger.module';
 
 @Module({
-  imports: [AuthModule, UsersModule, FileModule, PrismaModule, ChatgptModule, GoogleGeminiModule, WebsocketModule, DynamoDBModule],
+  imports: [AuthModule, UsersModule, FileModule, PrismaModule, ChatgptModule, GoogleGeminiModule, WebsocketModule, DynamoDBModule, SwingerModule],
   controllers: [AppController],
   providers: [AppService, JwtStrategy, CognitoAuthGuard],
   exports: [CognitoAuthGuard], 

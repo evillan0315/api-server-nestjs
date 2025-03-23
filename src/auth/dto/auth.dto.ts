@@ -24,3 +24,11 @@ export class RefreshTokenDto {
   refreshToken: string;
 }
 
+export class ValidateTokenDto {
+  @ApiProperty({
+    description: 'The JWT token to be validated',
+    example: 'your-jwt-token',
+  })
+  token: string;
+}
+

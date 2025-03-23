@@ -1,9 +1,10 @@
-import { Controller, Post, Param, Body, Req, Res, Get, Request, UseGuards } from '@nestjs/common';
+import { Controller, Post, Param, Body, Req, Res, Get, Request, UseGuards, UnauthorizedException } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags, ApiBearerAuth, ApiBody } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
-import { AuthSignUpDto, AuthSignInDto, RefreshTokenDto } from './dto/auth.dto';
+import { AuthSignUpDto, AuthSignInDto, RefreshTokenDto, ValidateTokenDto } from './dto/auth.dto';
 import { GoogleUserInfoDto } from './dto/google-userinfo.dto';
 import { GoogleAuthGuard } from '../auth/jwt-auth.guard/jwt-auth.guard.guard';
+
 
 // Import Request type from express
 import { Request as ExpressRequest, Response} from 'express';
@@ -18,7 +19,21 @@ interface GoogleUser {
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
-
+  
+  @Post('validate-token')
+  @ApiOperation({ summary: 'Validate a JWT token' })
+  @ApiResponse({ status: 200, description: 'Token is valid' })
+  @ApiResponse({ status: 401, description: 'Invalid or expired token' })
+  @ApiBody({ type: ValidateTokenDto }) // Specify the DTO for input validation
+  async validateToken(@Body() validateTokenDto: ValidateTokenDto) {
+    try {
+      const { token } = validateTokenDto; // Get token from request body
+      const payload = await this.authService.validateToken(token); // Call the validateToken method
+      return { message: 'Token is valid', payload }; // Return payload if token is valid
+    } catch (error) {
+      throw new UnauthorizedException('Invalid or expired token');
+    }
+  }
   @Post('google/login')
   @ApiOperation({ summary: 'Google Login' })  // Operation description for Swagger
   @ApiResponse({ 

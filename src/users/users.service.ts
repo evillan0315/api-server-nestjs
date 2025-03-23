@@ -13,6 +13,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody } from '@nestjs/s
 import * as dotenv from 'dotenv';
 import { CreateUserDto, UpdateUserDto } from './dto/users.dto';
 import { v4 as uuidv4 } from 'uuid'; // Import UUID generation
+import { PrismaService } from '../prisma/prisma.service';
 dotenv.config();
 
 const cognitoClient = new CognitoIdentityProviderClient({
@@ -24,6 +25,59 @@ const userPoolId = process.env.AWS_USER_POOL_ID!;
 @ApiTags('Users')
 @Injectable()
 export class UsersService {
+  constructor(private prisma: PrismaService) {}
+  
+
+  async getProfile(user: any) {
+    
+    try {
+      const command = new AdminGetUserCommand({
+        UserPoolId: userPoolId,
+        Username: user.username, // Use email as the unique identifier
+      });
+
+      const response = await cognitoClient.send(command);
+      // Ensure UserAttributes exists and map them properly
+    const userAttributes = response.UserAttributes?.reduce((acc, attr: { Name: string; Value?: string }) => {
+      if (attr.Name && attr.Value !== undefined) {
+        acc[attr.Name] = attr.Value;
+      }
+      return acc;
+    }, {} as Record<string, string>) || {};
+         const userData = {
+	   cognitoId: userAttributes["sub"] || undefined, // Ensure userId is undefined instead of null
+	  username: response.Username || undefined, // Ensure username is undefined instead of null
+	  email: userAttributes["email"] || undefined, // Ensure email is undefined instead of null
+	  //emailVerified: userAttributes["email_verified"] === "true",
+	};
+
+	let iuser = await this.prisma.user.findUnique({
+	  where: { email: userData?.email },
+	});
+	// If user does not exist, create it
+	  if (!iuser) {
+	    iuser = await this.prisma.user.create({
+	      data: {
+		cognitoId: userData.cognitoId,
+		username: userData.username,
+		email: userData?.email as string,
+	      },
+	    });
+	  } else if(iuser && iuser.id && !iuser.cognitoId){
+	    iuser = await this.prisma.user.update({
+	      where: { id: iuser.id },
+	      data: {cognitoId: userData.cognitoId, username: userData.username},
+	    });
+	  }
+	return iuser;
+       //return currentUser;
+    } catch (error: any) {
+      throw new Error(error.message || 'Failed to fetch user');
+    }
+    /*return this.prisma.users.findUnique({
+      where: { id: user.id },
+    });*/
+  }
   // ✅ Create User
   @ApiOperation({ summary: 'Create a new user' })
   @ApiResponse({ status: 201, description: 'User successfully created' })

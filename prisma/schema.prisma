@@ -150,7 +150,7 @@ model Priority {
 }
 
 model Project {
-  id          String   @id
+  id          String   @id @default(uuid())
   name        String
   description String?
   createdAt   DateTime @default(now())
@@ -159,7 +159,7 @@ model Project {
 }
 
 model Role {
-  id          String   @id
+  id          String   @id @default(uuid())
   name        String
   description String?
   createdAt   DateTime @default(now())
@@ -174,7 +174,7 @@ model Session {
 }
 
 model Status {
-  id        String   @id
+  id        String   @id @default(uuid())
   slug      String   @unique
   name      String
   colorId   String
@@ -186,7 +186,7 @@ model Status {
 }
 
 model Swingers {
-  id        String   @id
+  id        String   @id @default(uuid())
   email     String   @unique
   name      String
   swingerID String   @unique
@@ -201,7 +201,7 @@ model Tag {
 }
 
 model Task {
-  id          String    @id
+  id          String    @id @default(uuid())
   name        String
   description String?
   startDate   DateTime?
@@ -217,7 +217,7 @@ model Task {
 }
 
 model User {
-  id            String    @id
+  id            String    @id @default(uuid())
   email         String    @unique
   name          String?
   password      String?
@@ -228,6 +228,8 @@ model User {
   gender        String?
   username      String?   @unique
   createdAt     DateTime  @default(now())
+  cognitoId     String?
+  updatedAt     DateTime? @updatedAt
   Account       Account[]
   Chat          Chat[]
   Session       Session[]

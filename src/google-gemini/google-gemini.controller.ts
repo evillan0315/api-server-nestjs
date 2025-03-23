@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { GeminiDto } from './dto/gemini.dto';
 
-@ApiTags('AI Content')
+@ApiTags('Google Gemini')
 @Controller('google-gemini')
 @ApiBearerAuth() // Enables JWT authentication in Swagger
 @UseGuards(CognitoAuthGuard) // Protect all routes
