@@ -9,6 +9,7 @@ This project is a NestJS-based API server that provides authentication, file man
 - **AI Integrations**: Google Gemini and OpenAI APIs for AI-powered features.
 - **File Handling**: Upload, manage, and retrieve files.
 - **Real-time Execution**: WebSocket support for real-time interactions.
+- **API Documentation**: Integrated Swagger UI for API exploration.
 
 ## Project Structure
 ```
@@ -42,7 +43,7 @@ api-server/
 ### Steps
 1. Clone the repository:
    ```sh
-   git clone https://github.com/your-repo/api-server.git
+   git clone https://github.com/evillan0315/api-server-nestjs.git
    cd api-server
    ```
 2. Install dependencies:
@@ -85,5 +86,10 @@ npm run test
 
 ## License
 MIT License. See [LICENSE](LICENSE) for details.
+
+## 📞 Contact
+- **GitHub**: [evillan0315](https://github.com/evillan0315)
+- **Email**: evillan0315@gmail.com
+- **LinkedIn**: [Eddie Villanueva](https://www.linkedin.com/in/evillanueva0315/)
 
 
