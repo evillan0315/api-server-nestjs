@@ -7,7 +7,7 @@ import { FileController } from './file.controller';
     FileService,
     {
       provide: 'EXCLUDED_FOLDERS',
-      useValue: ['node_modules', 'dist'], // Example folders to exclude
+      useValue: ['node_modules', 'dist', '.git'], // Example folders to exclude
     },
   ],
   controllers: [FileController],
