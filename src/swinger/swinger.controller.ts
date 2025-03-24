@@ -8,7 +8,7 @@ import { CognitoAuthGuard } from '../auth/jwt-auth.guard/jwt-auth.guard.guard';
 
 
 @ApiTags('Swingers')
-@Controller('swingers')
+@Controller('api/swingers')
 @ApiBearerAuth() // Enables JWT authentication in Swagger
 @UseGuards(CognitoAuthGuard) // Protect all routes
 export class SwingerController {

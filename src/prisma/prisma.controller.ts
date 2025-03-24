@@ -8,7 +8,7 @@ import { CognitoAuthGuard } from '../auth/jwt-auth.guard/jwt-auth.guard.guard';
 
 @ApiTags('Prisma')
 @ApiBearerAuth() // Enables JWT authentication in Swagger
-@Controller('prisma')
+@Controller('api/prisma')
 @UseGuards(CognitoAuthGuard) // Protect all routes
 
 export class PrismaController {

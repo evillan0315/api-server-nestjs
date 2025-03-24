@@ -7,7 +7,7 @@ import { Request } from 'express';
 
 @ApiTags('Users')
 @ApiBearerAuth() // Enables JWT authentication in Swagger
-@Controller('users')
+@Controller('api/users')
 @UseGuards(CognitoAuthGuard) // Protect all routes
 export class UsersController {
   constructor(private readonly userService: UsersService) {}

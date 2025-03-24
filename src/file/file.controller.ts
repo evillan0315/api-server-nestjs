@@ -1,16 +1,51 @@
-import { Controller, Post, Get, Delete, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Body, Query, UseGuards, Param, Res, StreamableFile, Header } from '@nestjs/common';
 import { FileService } from './file.service';
 
 import { ApiTags, ApiOperation, ApiQuery, ApiBody, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { CognitoAuthGuard } from '../auth/jwt-auth.guard/jwt-auth.guard.guard';
-
+import { Response } from 'express';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as mime from 'mime-types'; // Import MIME type detection
 @ApiTags('File Management')
 @ApiBearerAuth() // Enables JWT authentication in Swagger
 @Controller('file')
 @UseGuards(CognitoAuthGuard) // Protect all routes
 export class FileController {
   constructor(private readonly fileService: FileService) {}
+   @Get('raw/:filePath')
+  async getFile(@Param('filePath') filePath: string, @Res() res: Response): Promise<any> {
+    try {
+     
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).send('File not found');
+      }
 
+      const fileExtension = path.extname(filePath).toLowerCase();
+      const mimeTypes: Record<string, string> = {
+        '.txt': 'text/plain',
+        '.json': 'application/json',
+        '.html': 'text/html',
+        '.css': 'text/css',
+        '.js': 'application/javascript',
+        '.ts': 'application/typescript',
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif',
+        '.bmp': 'image/bmp',
+        '.webp': 'image/webp',
+      };
+
+      const mimeType = mimeTypes[fileExtension] || 'application/octet-stream';
+
+      res.setHeader('Content-Type', mimeType);
+      const fileStream = fs.createReadStream(filePath);
+      return fileStream.pipe(res);
+    } catch (error) {
+      return res.status(500).send('Error reading file');
+    }
+  }
   @Get('list')
 @ApiOperation({ summary: 'List files in a directory' })
 @ApiQuery({ name: 'directory', required: false, description: 'Path to the directory' })
@@ -26,8 +61,11 @@ async getFiles(
   @Get('content')
   @ApiOperation({ summary: 'Get file content' })
   @ApiQuery({ name: 'filePath', required: true, description: 'Path to the file' })
+  
   @ApiResponse({ status: 200, description: 'File content returned successfully' })
-  async getFileContent(@Query('filePath') filePath: string) {
+  async getFileContent(
+  @Query('filePath') filePath: string
+  ) {
     return this.fileService.getFileContent(filePath);
   }
 

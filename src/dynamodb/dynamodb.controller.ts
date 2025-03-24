@@ -5,7 +5,7 @@ import { CognitoAuthGuard } from '../auth/jwt-auth.guard/jwt-auth.guard.guard';
 
 @ApiTags('DynamoDB')
 @ApiBearerAuth() // Enables JWT authentication in Swagger
-@Controller('dynamodb')
+@Controller('api/dynamodb')
 @UseGuards(CognitoAuthGuard) // Protect all routes
 export class DynamoDBController {
   constructor(private readonly dynamoDBService: DynamoDBService) {}
