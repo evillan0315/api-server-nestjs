@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import {
   CognitoIdentityProviderClient,
   AdminCreateUserCommand,
@@ -8,8 +8,9 @@ import {
   ListUsersCommand,
   AdminCreateUserCommandOutput,
   AdminGetUserCommandOutput,
+  AdminSetUserPasswordCommand
 } from '@aws-sdk/client-cognito-identity-provider';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, } from '@nestjs/swagger';
 import * as dotenv from 'dotenv';
 import { CreateUserDto, UpdateUserDto } from './dto/users.dto';
 import { v4 as uuidv4 } from 'uuid'; // Import UUID generation
@@ -29,55 +30,76 @@ export class UsersService {
   
 
   async getProfile(user: any) {
-    
-    try {
-      const command = new AdminGetUserCommand({
-        UserPoolId: userPoolId,
-        Username: user.username, // Use email as the unique identifier
-      });
+	  try {
+	
+	    
+            console.log("User object received:", JSON.stringify(user, null, 2));
+            console.log("User object received:", JSON.stringify(user));
+            console.log("Extracted username:", user?.username);
 
-      const response = await cognitoClient.send(command);
-      // Ensure UserAttributes exists and map them properly
-    const userAttributes = response.UserAttributes?.reduce((acc, attr: { Name: string; Value?: string }) => {
-      if (attr.Name && attr.Value !== undefined) {
-        acc[attr.Name] = attr.Value;
-      }
-      return acc;
-    }, {} as Record<string, string>) || {};
-         const userData = {
-	   cognitoId: userAttributes["sub"] || undefined, // Ensure userId is undefined instead of null
-	  username: response.Username || undefined, // Ensure username is undefined instead of null
-	  email: userAttributes["email"] || undefined, // Ensure email is undefined instead of null
-	  //emailVerified: userAttributes["email_verified"] === "true",
-	};
+            const username = user.username || user.email || user.userId; // Fallback to userId if username is missing
 
-	let iuser = await this.prisma.user.findUnique({
-	  where: { email: userData?.email },
-	});
-	// If user does not exist, create it
-	  if (!iuser) {
-	    iuser = await this.prisma.user.create({
-	      data: {
-		cognitoId: userData.cognitoId,
-		username: userData.username,
-		email: userData?.email as string,
+		if (!username) {
+		  throw new Error("Username is required but missing.");
+		}
+	    if (!user?.username) {
+	      throw new Error("Missing username in user object.");
+	    }
+
+	    const command = new AdminGetUserCommand({
+	      UserPoolId: userPoolId,
+	      Username: user.username, // Use email as a fallback
+	    });
+
+	    const response = await cognitoClient.send(command);
+	    console.log("Cognito Response:", response); // Debugging
+
+	    const userAttributes = response.UserAttributes?.reduce(
+	      (acc, attr: { Name: string; Value?: string }) => {
+		if (attr.Name && attr.Value !== undefined) {
+		  acc[attr.Name] = attr.Value;
+		}
+		return acc;
 	      },
+	      {} as Record<string, string>
+	    ) || {};
+
+	    const userData = {
+	      cognitoId: userAttributes["sub"] || undefined,
+	      username: response.Username || userAttributes["preferred_username"] || userAttributes["email"] || undefined,
+	      email: userAttributes["email"] || undefined,
+	    };
+
+	    if (!userData.username) {
+	      throw new Error("Username is missing in Cognito response.");
+	    }
+
+	    let iuser = await this.prisma.user.findUnique({
+	      where: { email: userData.email },
 	    });
-	  } else if(iuser && iuser.id && !iuser.cognitoId){
-	    iuser = await this.prisma.user.update({
-	      where: { id: iuser.id },
-	      data: {cognitoId: userData.cognitoId, username: userData.username},
-	    });
+            
+	    if (!iuser) {
+	      iuser = await this.prisma.user.create({
+		data: {
+		  cognitoId: userData.cognitoId,
+		  username: userData.username,
+		  email: userData.email as string,
+		},
+	      });
+	    } else if (iuser.id && !iuser.cognitoId) {
+	      iuser = await this.prisma.user.update({
+		where: { id: iuser.id },
+		data: { cognitoId: userData.cognitoId, username: userData.username },
+	      });
+	    }
+
+	    return iuser;
+	  } catch (error: any) {
+	    console.error("Error fetching user profile:", error.message);
+	    throw new Error(error.message || "Failed to fetch user");
 	  }
-	return iuser;
-       //return currentUser;
-    } catch (error: any) {
-      throw new Error(error.message || 'Failed to fetch user');
-    }
-    /*return this.prisma.users.findUnique({
-      where: { id: user.id },
-    });*/
-  }
+	}
+
   // ✅ Create User
   @ApiOperation({ summary: 'Create a new user' })
   @ApiResponse({ status: 201, description: 'User successfully created' })
@@ -92,8 +114,9 @@ export class UsersService {
       },
     },
   })
-  async createUser(email: string, name: string): Promise<AdminCreateUserCommandOutput> {
+  async createUser(email: string, name: string, password: string): Promise<AdminCreateUserCommandOutput> {
     try {
+      console.log(password, email);
       const command = new AdminCreateUserCommand({
         UserPoolId: process.env.AWS_USER_POOL_ID!,
         Username: email, // Use email as the unique identifier
@@ -104,8 +127,23 @@ export class UsersService {
         MessageAction: 'SUPPRESS', // Prevents sending invitation email
       });
 
-      const response = await cognitoClient.send(command);
-      return response;
+      await cognitoClient.send(command);
+      const setPasswordCommand = new AdminSetUserPasswordCommand({
+    UserPoolId: process.env.AWS_USER_POOL_ID!,
+    Username: email,
+    Password: password,
+    Permanent: true, // <-- This is the key!
+  });
+
+  await cognitoClient.send(setPasswordCommand);
+
+      const profile = await this.getProfile({"username":email,"email":email});
+     
+      return {
+	  ...profile,
+	  $metadata: { httpStatusCode: 200 }, // Add fake metadata to satisfy TypeScript
+	};
+
     } catch (error: any) {
       throw new Error(error.message || 'Failed to create user');
     }
@@ -134,6 +172,51 @@ export class UsersService {
     }
   }
 
+  @ApiOperation({ summary: 'Get user by Cognito userId (sub)' })
+  @ApiParam({
+    name: 'userId',
+    description: 'The unique identifier of the user (Cognito sub)',
+    type: String,
+    example: 'c9eee4d8-8001-7020-92c3-84aab9148595',
+  })
+  @ApiResponse({ status: 200, description: 'User found', schema: {
+    type: 'object',
+    properties: {
+      userId: { type: 'string', example: 'c9eee4d8-8001-7020-92c3-84aab9148595' },
+      email: { type: 'string', example: 'user@example.com' },
+      username: { type: 'string', example: 'user@example.com' },
+    },
+  }})
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async getUserById(userId: string) {
+    try {
+      const command = new AdminGetUserCommand({
+        UserPoolId: process.env.COGNITO_USER_POOL_ID,
+        Username: userId, // Cognito uses `sub` as the unique identifier
+      });
+
+      const response = await cognitoClient.send(command);
+
+      return {
+        userId: response.UserAttributes?.find(attr => attr.Name === 'sub')?.Value,
+        email: response.UserAttributes?.find(attr => attr.Name === 'email')?.Value,
+        username: response.Username,
+      };
+    } catch (error) {
+      return null; // Return null so controller can throw 404
+    }
+  }
+  async getUserByCognitoId(cognitoId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { cognitoId },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return user;
+  }
   // ✅ Update User by Username (email)
   @ApiOperation({ summary: 'Update user attributes by email (Cognito username)' })
   @ApiParam({

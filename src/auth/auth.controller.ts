@@ -43,23 +43,32 @@ export class AuthController {
   }
 
   @Get('validate/api/key')
-  @ApiOperation({ summary: 'Validate API Key' })
-  @ApiQuery({ name: 'apiKey', required: true, example: 'abc123xyz456' })
-  @ApiResponse({
-    status: 200,
-    description: 'API key validation result',
-    schema: {
-      type: 'object',
-      properties: {
-        valid: { type: 'boolean', example: true },
+@ApiOperation({ summary: 'Validate API Key' })
+@ApiQuery({ name: 'apiKey', required: true, example: 'abc123xyz456' })
+@ApiResponse({
+  status: 200,
+  description: 'API key validation result',
+  schema: {
+    type: 'object',
+    properties: {
+      valid: { type: 'boolean', example: true },
+      user: {
+        type: 'object',
+        nullable: true,
+        properties: {
+          userId: { type: 'string', example: '1234-5678' },
+          username: { type: 'string', example: 'edvillan15' },
+          email: { type: 'string', example: 'user@example.com' },
+        },
       },
     },
-  })
-  async validateApiKey(@Query('apiKey') apiKey: string) {
-    const isValid = await this.authService.validateApiKey(apiKey);
-    return { valid: isValid };
-  }
-  @Post('validate-token')
+  },
+})
+async validateApiKey(@Query('apiKey') apiKey: string) {
+  const result = await this.authService.validateApiKey(apiKey);
+  return result;
+}
+  @Post('validate/token')
   @ApiOperation({ summary: 'Validate a JWT token' })
   @ApiResponse({ status: 200, description: 'Token is valid' })
   @ApiResponse({ status: 401, description: 'Invalid or expired token' })

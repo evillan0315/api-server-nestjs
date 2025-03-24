@@ -1,7 +1,7 @@
 import { Controller, Post, Get, Delete, Body, Query, UseGuards , Request } from '@nestjs/common';
 import { GoogleGeminiService } from './google-gemini.service';
 import { ApiTags, ApiOperation, ApiQuery, ApiBody, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
-import { CognitoAuthGuard } from '../auth/jwt-auth.guard/jwt-auth.guard.guard';
+import { CognitoAuthGuard } from '../auth/guard/auth.guard';
 import { v4 as uuidv4 } from 'uuid'; 
 
 import { GeminiDto } from './dto/gemini.dto';

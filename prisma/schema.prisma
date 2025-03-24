@@ -228,7 +228,7 @@ model User {
   gender        String?
   username      String?   @unique
   createdAt     DateTime  @default(now())
-  cognitoId     String?
+  cognitoId     String?   @unique
   updatedAt     DateTime? @updatedAt
   Account       Account[]
   Chat          Chat[]

@@ -1,8 +1,9 @@
-import { Controller, Post, Get, Param, Put, Delete, Body, Req, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Param, Put, Delete, Body, Req, UseGuards, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { CreateUserDto, UpdateUserDto } from './dto/users.dto';
 import { UsersService } from './users.service';
-import { CognitoAuthGuard } from '../auth/jwt-auth.guard/jwt-auth.guard.guard';
+import { CognitoAuthGuard } from '../auth/guard/auth.guard';
+import { ApiKeyAuthGuard } from '../auth/guard/api-key.guard';
 import { Request } from 'express';
 
 @ApiTags('Users')
@@ -12,11 +13,13 @@ import { Request } from 'express';
 export class UsersController {
   constructor(private readonly userService: UsersService) {}
   @Get('me')
+  //@UseGuards(ApiKeyAuthGuard)
   @ApiOperation({ summary: 'Get current logged-in user' })
   @ApiResponse({ status: 200, description: 'Returns the current user profile' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getProfile(@Req() request: Request) {
    //return this.userService.getUser(request?.user)
+   console.log('get profile in usercontroller', request.user)
     return this.userService.getProfile(request.user);
   }
   
@@ -26,8 +29,8 @@ export class UsersController {
   @ApiResponse({ status: 201, description: 'User successfully created' })
   @ApiResponse({ status: 400, description: 'Bad request' })
   async createUser(@Body() createUserDto: CreateUserDto) {
-    const { email, name } = createUserDto;
-    return this.userService.createUser(email, name);
+    const { email, name, password } = createUserDto;
+    return this.userService.createUser(email, name, password);
   }
 
   @Get()
@@ -35,6 +38,35 @@ export class UsersController {
   @ApiResponse({ status: 200, description: 'List of users' })
   async listUsers() {
     return this.userService.listUsers();
+  }
+  // ✅ New endpoint: Get User by Cognito User ID (sub)
+  @Get('id/:userId')
+  @ApiOperation({ summary: 'Get user by Cognito User ID (sub)' })
+  @ApiParam({
+    name: 'userId',
+    description: 'The unique Cognito User ID (sub)',
+    type: String,
+    example: 'c9eee4d8-8001-7020-92c3-84aab9148595',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'User found',
+    schema: {
+      type: 'object',
+      properties: {
+        userId: { type: 'string', example: 'c9eee4d8-8001-7020-92c3-84aab9148595' },
+        email: { type: 'string', example: 'user@example.com' },
+        username: { type: 'string', example: 'user@example.com' },
+      },
+    },
+  })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async getUserByUserId(@Param('userId') userId: string) {
+    const user = await this.userService.getUserById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    return user;
   }
 
   @Get(':username')

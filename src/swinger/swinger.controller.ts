@@ -3,8 +3,7 @@ import { Controller, Get, Post, Body, Param, Put, UseGuards, Query } from '@nest
 import { SwingerService } from './swinger.service';
 import { CreateSwingerDto, UpdateSwingerDto } from './dto/swinger.dto';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
-
-import { CognitoAuthGuard } from '../auth/jwt-auth.guard/jwt-auth.guard.guard';
+import { CognitoAuthGuard } from '../auth/guard/auth.guard';
 
 
 @ApiTags('Swingers')

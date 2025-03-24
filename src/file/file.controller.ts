@@ -2,7 +2,7 @@ import { Controller, Post, Get, Delete, Body, Query, UseGuards, Param, Res, Stre
 import { FileService } from './file.service';
 
 import { ApiTags, ApiOperation, ApiQuery, ApiBody, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
-import { CognitoAuthGuard } from '../auth/jwt-auth.guard/jwt-auth.guard.guard';
+import { CognitoAuthGuard } from '../auth/guard/auth.guard';
 import { Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';

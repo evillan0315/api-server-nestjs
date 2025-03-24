@@ -7,12 +7,14 @@ import {
   InitiateAuthCommand,
   GlobalSignOutCommand,
   AdminUserGlobalSignOutCommand,
+  AdminGetUserCommand
 } from '@aws-sdk/client-cognito-identity-provider';
 import { DynamoDBClient, PutItemCommand, GetItemCommand } from "@aws-sdk/client-dynamodb";
 import axios from 'axios';
 import * as dotenv from 'dotenv';
 import { AuthSignUpDto, AuthSignInDto, RefreshTokenDto } from './dto/auth.dto';
 import { User } from '@prisma/client'; // If using Prisma, or adjust if you're using another ORM
+import { UsersService } from '../users/users.service';
 import { Response } from 'express'; // Import Response from express
 import * as jwt from 'jsonwebtoken';
 import * as jwksClient from 'jwks-rsa';
@@ -23,27 +25,59 @@ dotenv.config();
 @ApiTags('Auth')
 @Injectable()
 export class AuthService {
-  private dynamoDb: DynamoDBClient;
+  // AWS Services
+  private readonly dynamoDb: DynamoDBClient;
+  private readonly cognitoClient: CognitoIdentityProviderClient;
 
-  constructor(private jwtService: JwtService) {
+  // Cognito Configuration
+  private readonly userPoolId: string;
+  private readonly clientId: string;
+  private readonly cognitoDomain: string;
+  private readonly clientSecret: string;
+  private readonly redirectUri: string;
+
+  // Google OAuth
+  private readonly googleClientSecret: string;
+  private readonly googleUserInfoUrl = 'https://www.googleapis.com/oauth2/v3/userinfo';
+
+  // GitHub OAuth
+  private readonly githubUserInfoUrl = 'https://api.github.com/user';
+
+  // JWKS for token verification
+  private readonly jwksUri: string;
+  private readonly jwks: jwksClient.JwksClient;
+
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly userService: UsersService, // Fix: Ensure userService is injected
+  ) {
+    // Initialize AWS clients
     this.dynamoDb = new DynamoDBClient({ region: process.env.AWS_REGION });
-  }
-  private cognitoClient = new CognitoIdentityProviderClient({
-    region: process.env.AWS_REGION!,
-  });
+    this.cognitoClient = new CognitoIdentityProviderClient({ region: process.env.AWS_REGION });
 
-  private userPoolId = process.env.AWS_USER_POOL_ID!;
-  private clientId = process.env.AWS_USER_POOL_WEB_CLIENT_ID!;
-  private cognitoDomain = process.env.COGNITO_DOMAIN!;
-  private redirectUri = process.env.COGNITO_REDIRECT_URI!;
-  private googleClientSecret = process.env.GOOGLE_CLIENT_SECRET!;
-  private clientSecret = process.env.COGNITO_CLIENT_SECRET!;
-  
-  private jwksUri = `https://cognito-idp.${process.env.AWS_REGION}.amazonaws.com/${process.env.AWS_USER_POOL_ID}/.well-known/jwks.json`;
-  private jwks = jwksClient({ jwksUri: this.jwksUri });
-  
-  private readonly googleUserInfoUrl = `https://www.googleapis.com/oauth2/v3/userinfo`;
-  private readonly githubUserInfoUrl = `https://api.github.com/user`;
+    // Load environment variables (handling missing values)
+    this.userPoolId = this.getEnvVar('AWS_USER_POOL_ID');
+    this.clientId = this.getEnvVar('AWS_USER_POOL_WEB_CLIENT_ID');
+    this.cognitoDomain = this.getEnvVar('COGNITO_DOMAIN');
+    this.clientSecret = this.getEnvVar('COGNITO_CLIENT_SECRET');
+    this.redirectUri = this.getEnvVar('COGNITO_REDIRECT_URI');
+    this.googleClientSecret = this.getEnvVar('GOOGLE_CLIENT_SECRET');
+
+    // JWKS Client for Cognito token validation
+    this.jwksUri = `https://cognito-idp.${process.env.AWS_REGION}.amazonaws.com/${this.userPoolId}/.well-known/jwks.json`;
+    this.jwks = jwksClient({ jwksUri: this.jwksUri });
+  }
+
+  /**
+   * Fetches required environment variables and throws an error if missing.
+   */
+  private getEnvVar(key: string): string {
+    const value = process.env[key];
+    if (!value) {
+      throw new Error(`Missing environment variable: ${key}`);
+    }
+    return value;
+  }
   
   async generateApiKey(userId: string): Promise<string> {
     const apiKey = uuidv4();
@@ -61,20 +95,72 @@ export class AuthService {
 
     return apiKey;
   }
-  async validateApiKey(apiKey: string): Promise<boolean> {
+  async validateApiKey(apiKey: string): Promise<{ valid: boolean; user?: any }> {
+    // Query API keys table in DynamoDB
     const params = {
       TableName: process.env.DYNAMODB_API_KEYS,
       Key: { apiKey: { S: apiKey } },
     };
 
     const response = await this.dynamoDb.send(new GetItemCommand(params));
+    console.log('Response from DynamoDB:', response);
 
     if (!response.Item) {
       throw new UnauthorizedException('Invalid API key');
     }
 
-    return true;
+    // Extract Cognito userId from stored API key (assuming it's stored as `userId`)
+    const cognitoId = response.Item.userId?.S;
+    console.log('Cognito UserId:', cognitoId);
+
+    if (!cognitoId) {
+      return { valid: true }; // No userId found, just return valid flag
+    }
+
+    // Fetch user details from our UserService instead of Cognito directly
+    try {
+      const user = await this.userService.getUserByCognitoId(cognitoId);
+      return { valid: true, user };
+    } catch (error: any) {
+      console.error('Failed to fetch user from UserService:', error);
+      throw new Error(error.message || 'Failed to fetch user');
+    }
   }
+  /*async validateApiKey(apiKey: string): Promise<{ valid: boolean; user?: any }> {
+	  const params = {
+	    TableName: process.env.DYNAMODB_API_KEYS,
+	    Key: { apiKey: { S: apiKey } },
+	  };
+
+	  const response = await this.dynamoDb.send(new GetItemCommand(params));
+
+	  if (!response.Item) {
+	    throw new UnauthorizedException('Invalid API key');
+	  }
+
+	  // Extract user details from the stored API key (assuming userId is stored)
+	  const userId = response.Item.userId?.S;
+	  if (!userId) {
+	    return { valid: true }; // No user associated with the API key
+	  }
+
+	  // Fetch user info from Users table
+	  const userParams = {
+	    TableName: process.env.DYNAMODB_USERS,
+	    Key: { userId: { S: userId } },
+	  };
+
+	  const userResponse = await this.dynamoDb.send(new GetItemCommand(userParams));
+	  const user = userResponse.Item
+	    ? {
+		userId: userResponse.Item.userId.S,
+		username: userResponse.Item.username?.S,
+		email: userResponse.Item.email?.S,
+	      }
+	    : null;
+
+	  return { valid: true, user };
+	}*/
   async validateToken(token: string): Promise<any> {
     if (!token) {
       throw new UnauthorizedException('Token is missing');
