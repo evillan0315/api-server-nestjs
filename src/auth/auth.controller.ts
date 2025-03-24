@@ -34,6 +34,83 @@ export class AuthController {
       throw new UnauthorizedException('Invalid or expired token');
     }
   }
+  @Get('github/login')
+  @UseGuards(AuthGuard('github'))
+  @ApiOperation({ summary: 'GitHub Login' })
+  @ApiResponse({
+    status: 200,
+    description: 'Redirects to GitHub for authentication',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Redirecting to GitHub authentication...' },
+      },
+    },
+  })
+  async githubLogin() {
+    return { message: 'Redirecting to GitHub authentication...' };
+  }
+
+  @Get('github/callback')
+  @UseGuards(AuthGuard('github'))
+  @ApiOperation({ summary: 'GitHub OAuth callback' })
+  @ApiResponse({
+    status: 200,
+    description: 'Successfully authenticated with GitHub',
+    schema: {
+      type: 'object',
+      properties: {
+        accessToken: { type: 'string', example: 'gho_xxx' },
+        profile: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', example: '123456' },
+            username: { type: 'string', example: 'octocat' },
+            email: { type: 'string', example: 'octocat@github.com' },
+            avatar_url: { type: 'string', example: 'https://github.com/images/error/octocat_happy.gif' },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid GitHub login callback',
+  })
+  async githubCallback(@Req() req) {
+    return this.authService.login(req.user);
+  }
+
+  @Post('github/userinfo')
+  @ApiOperation({ summary: 'Get GitHub User Info' })
+  @ApiResponse({
+    status: 200,
+    description: 'GitHub user info fetched successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', example: '123456' },
+        username: { type: 'string', example: 'octocat' },
+        email: { type: 'string', example: 'octocat@github.com' },
+        avatar_url: { type: 'string', example: 'https://github.com/images/error/octocat_happy.gif' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid or expired GitHub authentication token',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        accessToken: { type: 'string', example: 'gho_xxx' },
+      },
+    },
+  })
+  async getUserInfo(@Body() body: { accessToken: string }) {
+    return this.authService.getGithubUserInfo(body.accessToken);
+  }
   @Post('google/login')
   @ApiOperation({ summary: 'Google Login' })  // Operation description for Swagger
   @ApiResponse({ 

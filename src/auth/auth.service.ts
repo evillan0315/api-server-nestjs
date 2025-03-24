@@ -58,6 +58,26 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired token');
     }
   }
+  @ApiOperation({ summary: 'Github Login' })
+  @ApiResponse({ status: 200, description: 'Github login successful' })
+  async githubLogin(code: string) {
+    try {
+      const tokenResponse = await axios.post(
+        `${this.cognitoDomain}/oauth2/token`,
+        new URLSearchParams({
+          grant_type: 'authorization_code',
+          client_id: this.clientId,
+          client_secret: this.clientSecret,
+          code: code,
+          redirect_uri: this.redirectUri,
+        }),
+        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+      );
+      return tokenResponse.data;
+    } catch (error: any) {
+      throw new Error(error.response?.data || 'Github login failed');
+    }
+  }
   @ApiOperation({ summary: 'Google Login' })
   @ApiResponse({ status: 200, description: 'Google login successful' })
   async googleLogin(code: string) {
