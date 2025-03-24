@@ -1,5 +1,6 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, InternalServerErrorException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { JwtService } from '@nestjs/jwt';
 import {
   CognitoIdentityProviderClient,
   SignUpCommand,
@@ -7,6 +8,7 @@ import {
   GlobalSignOutCommand,
   AdminUserGlobalSignOutCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
+import { DynamoDBClient, PutItemCommand, GetItemCommand } from "@aws-sdk/client-dynamodb";
 import axios from 'axios';
 import * as dotenv from 'dotenv';
 import { AuthSignUpDto, AuthSignInDto, RefreshTokenDto } from './dto/auth.dto';
@@ -14,12 +16,18 @@ import { User } from '@prisma/client'; // If using Prisma, or adjust if you're u
 import { Response } from 'express'; // Import Response from express
 import * as jwt from 'jsonwebtoken';
 import * as jwksClient from 'jwks-rsa';
+import { v4 as uuidv4 } from 'uuid';
 
 dotenv.config();
 
 @ApiTags('Auth')
 @Injectable()
 export class AuthService {
+  private dynamoDb: DynamoDBClient;
+
+  constructor(private jwtService: JwtService) {
+    this.dynamoDb = new DynamoDBClient({ region: process.env.AWS_REGION });
+  }
   private cognitoClient = new CognitoIdentityProviderClient({
     region: process.env.AWS_REGION!,
   });
@@ -33,7 +41,40 @@ export class AuthService {
   
   private jwksUri = `https://cognito-idp.${process.env.AWS_REGION}.amazonaws.com/${process.env.AWS_USER_POOL_ID}/.well-known/jwks.json`;
   private jwks = jwksClient({ jwksUri: this.jwksUri });
+  
+  private readonly googleUserInfoUrl = `https://www.googleapis.com/oauth2/v3/userinfo`;
+  private readonly githubUserInfoUrl = `https://api.github.com/user`;
+  
+  async generateApiKey(userId: string): Promise<string> {
+    const apiKey = uuidv4();
 
+    const params = {
+      TableName: process.env.DYNAMODB_API_KEYS,
+      Item: {
+        userId: { S: userId },
+        apiKey: { S: apiKey },
+        createdAt: { S: new Date().toISOString() },
+      },
+    };
+
+    await this.dynamoDb.send(new PutItemCommand(params));
+
+    return apiKey;
+  }
+  async validateApiKey(apiKey: string): Promise<boolean> {
+    const params = {
+      TableName: process.env.DYNAMODB_API_KEYS,
+      Key: { apiKey: { S: apiKey } },
+    };
+
+    const response = await this.dynamoDb.send(new GetItemCommand(params));
+
+    if (!response.Item) {
+      throw new UnauthorizedException('Invalid API key');
+    }
+
+    return true;
+  }
   async validateToken(token: string): Promise<any> {
     if (!token) {
       throw new UnauthorizedException('Token is missing');
@@ -61,6 +102,7 @@ export class AuthService {
   @ApiOperation({ summary: 'Github Login' })
   @ApiResponse({ status: 200, description: 'Github login successful' })
   async githubLogin(code: string) {
+    
     try {
       const tokenResponse = await axios.post(
         `${this.cognitoDomain}/oauth2/token`,
@@ -76,6 +118,31 @@ export class AuthService {
       return tokenResponse.data;
     } catch (error: any) {
       throw new Error(error.response?.data || 'Github login failed');
+    }
+  }
+  @ApiOperation({ summary: 'Github Getting user info' })
+  @ApiResponse({ status: 200, description: 'Github user info' })
+  async getGithubUserInfo(accessToken: string) {
+    try {
+      const response = await axios.get('https://api.github.com/user', {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: 'application/vnd.github.v3+json',
+        },
+      });
+
+      if (!response.data) {
+        throw new UnauthorizedException('Failed to fetch GitHub user info');
+      }
+
+      return {
+        id: response.data.id,
+        username: response.data.login,
+        email: response.data.email,
+        avatar_url: response.data.avatar_url,
+      };
+    } catch (error) {
+      throw new UnauthorizedException('Invalid or expired GitHub authentication token');
     }
   }
   @ApiOperation({ summary: 'Google Login' })
@@ -98,13 +165,16 @@ export class AuthService {
       throw new Error(error.response?.data || 'Google login failed');
     }
   }
+  @ApiOperation({ summary: 'Validate Google login' })
+  @ApiResponse({ status: 200, description: 'Google login validated successfully' })
   async validateGoogleLogin(profile: any): Promise<User> {
     const { id, emails, displayName, photos } = profile;
-    console.log(profile, 'profile');
-    // Check if user already exists based on the Google ID
-    //let user = await this.userService.findByGoogleId(id);
     return profile;
-   /* if (!user) {
+    //console.log(profile, 'profile');
+    // Check if user already exists based on the Google ID
+    /*let user = await this.userService.findByGoogleId(id);
+
+    if (!user) {
       // If user doesn't exist, create a new user
       user = await this.userService.createUser({
         googleId: id,
@@ -112,10 +182,42 @@ export class AuthService {
         name: displayName,
         photoUrl: photos ? photos[0].value : null, // Store the profile photo URL if available
       });
-    } */
+    } 
 
     // Return the user object or user data as per your app's needs
-    //return user;
+    return user;*/
+  }
+  @ApiOperation({ summary: 'Get Google User Info' })
+  @ApiResponse({ status: 200, description: 'Google User info retrieved successfully' })
+  async getGoogleUserInfo(accessToken: string) {
+    try {
+      const response = await axios.get(this.googleUserInfoUrl, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (!response.data) {
+        throw new UnauthorizedException('No user data returned from Google');
+      }
+
+      return {
+        id: response.data.sub,
+        email: response.data.email,
+        name: response.data.name,
+        picture: response.data.picture,
+        locale: response.data.locale,
+      };
+    } catch (error: any) {
+      if (error.response) {
+        // Handle specific HTTP error codes from Google's API
+        const status = error.response.status;
+        if (status === 401) {
+          throw new UnauthorizedException('Invalid or expired Google authentication token');
+        } else if (status === 403) {
+          throw new UnauthorizedException('Forbidden: Access denied to Google API');
+        }
+      }
+      throw new InternalServerErrorException('Failed to fetch user info from Google');
+    }
   }
   @ApiOperation({ summary: 'Get User Info' })
   @ApiResponse({ status: 200, description: 'User info retrieved successfully' })

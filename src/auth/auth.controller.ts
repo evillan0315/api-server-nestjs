@@ -1,13 +1,14 @@
-import { Controller, Post, Param, Body, Req, Res, Get, Request, UseGuards, UnauthorizedException } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags, ApiBearerAuth, ApiBody } from '@nestjs/swagger';
+import { Controller, Post, Param, Body, Req, Res, Get, Request, UseGuards, UnauthorizedException, Query } from '@nestjs/common';
+import { ApiOperation, ApiResponse, ApiTags, ApiBearerAuth, ApiBody, ApiQuery } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { AuthSignUpDto, AuthSignInDto, RefreshTokenDto, ValidateTokenDto } from './dto/auth.dto';
 import { GoogleUserInfoDto } from './dto/google-userinfo.dto';
-import { GoogleAuthGuard } from '../auth/jwt-auth.guard/jwt-auth.guard.guard';
+import { GoogleAuthGuard, CognitoAuthGuard, GithubAuthGuard, JwtAuthGuard } from './guard/auth.guard';
 
 
 // Import Request type from express
 import { Request as ExpressRequest, Response} from 'express';
+
 interface GoogleUser {
   id: string;
   email: string;
@@ -17,9 +18,47 @@ interface GoogleUser {
 @ApiTags('Auth')
 @ApiBearerAuth()  // Swagger UI will expect the Authorization token in the header
 @Controller('auth')
+
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
   
+  @UseGuards(JwtAuthGuard)
+  @Post('generate/api/key')
+  @ApiOperation({ summary: 'Generate API Key' })
+  @ApiBearerAuth()
+  @ApiResponse({
+    status: 201,
+    description: 'API key successfully generated',
+    schema: {
+      type: 'object',
+      properties: {
+        apiKey: { type: 'string', example: 'abc123xyz456' },
+      },
+    },
+  })
+  async generateApiKey(@Req() req) {
+    const userId = req.user.userId;
+    const apiKey = await this.authService.generateApiKey(userId);
+    return { apiKey };
+  }
+
+  @Get('validate/api/key')
+  @ApiOperation({ summary: 'Validate API Key' })
+  @ApiQuery({ name: 'apiKey', required: true, example: 'abc123xyz456' })
+  @ApiResponse({
+    status: 200,
+    description: 'API key validation result',
+    schema: {
+      type: 'object',
+      properties: {
+        valid: { type: 'boolean', example: true },
+      },
+    },
+  })
+  async validateApiKey(@Query('apiKey') apiKey: string) {
+    const isValid = await this.authService.validateApiKey(apiKey);
+    return { valid: isValid };
+  }
   @Post('validate-token')
   @ApiOperation({ summary: 'Validate a JWT token' })
   @ApiResponse({ status: 200, description: 'Token is valid' })
@@ -35,7 +74,7 @@ export class AuthController {
     }
   }
   @Get('github/login')
-  @UseGuards(AuthGuard('github'))
+  //@UseGuards(JwtAuthGuard('github'))
   @ApiOperation({ summary: 'GitHub Login' })
   @ApiResponse({
     status: 200,
@@ -52,7 +91,7 @@ export class AuthController {
   }
 
   @Get('github/callback')
-  @UseGuards(AuthGuard('github'))
+  //@UseGuards(AuthGuard('github'))
   @ApiOperation({ summary: 'GitHub OAuth callback' })
   @ApiResponse({
     status: 200,
@@ -73,14 +112,6 @@ export class AuthController {
       },
     },
   })
-  @ApiResponse({
-    status: 400,
-    description: 'Invalid GitHub login callback',
-  })
-  async githubCallback(@Req() req) {
-    return this.authService.login(req.user);
-  }
-
   @Post('github/userinfo')
   @ApiOperation({ summary: 'Get GitHub User Info' })
   @ApiResponse({
@@ -108,7 +139,7 @@ export class AuthController {
       },
     },
   })
-  async getUserInfo(@Body() body: { accessToken: string }) {
+  async getGithubUserInfo(@Body() body: { accessToken: string }) {
     return this.authService.getGithubUserInfo(body.accessToken);
   }
   @Post('google/login')
