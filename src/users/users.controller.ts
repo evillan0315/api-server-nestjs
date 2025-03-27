@@ -13,13 +13,11 @@ import { Request } from 'express';
 export class UsersController {
   constructor(private readonly userService: UsersService) {}
   @Get('me')
-  //@UseGuards(ApiKeyAuthGuard)
+  
   @ApiOperation({ summary: 'Get current logged-in user' })
   @ApiResponse({ status: 200, description: 'Returns the current user profile' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getProfile(@Req() request: Request) {
-   //return this.userService.getUser(request?.user)
-   console.log('get profile in usercontroller', request.user)
     return this.userService.getProfile(request.user);
   }
   

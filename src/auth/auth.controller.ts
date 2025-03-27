@@ -42,14 +42,17 @@ export class AuthController {
     },
   })
   async generateApiKey(@Req() req) {
-    const userId = req.user.userId;
-    const apiKey = await this.authService.generateApiKey(userId);
+    const user = req.user;
+    console.log(user, 'user');
+    const apiKey = await this.authService.generateApiKey(user);
     return { apiKey };
   }
 
   @Get('validate/api/key')
 @ApiOperation({ summary: 'Validate API Key' })
 @ApiQuery({ name: 'apiKey', required: true, example: 'abc123xyz456' })
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
 @ApiResponse({
   status: 200,
   description: 'API key validation result',

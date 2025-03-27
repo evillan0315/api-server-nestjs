@@ -1,29 +1,25 @@
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
-import { AuthService } from '../auth.service'; // Ensure correct import
+import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import { AuthService } from '../auth.service'; // 👈 Ensure correct path
 
 @Injectable()
 export class ApiKeyAuthGuard implements CanActivate {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authService: AuthService) {} // ✅ Now this should work!
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
     const apiKey = request.headers['x-api-key'];
 
-    console.log('🔑 Received API Key:', apiKey); // Debug log
-
     if (!apiKey) {
-      console.error('❌ API Key Missing');
       throw new UnauthorizedException('API Key is missing');
     }
 
-    const isValid = await this.authService.validateApiKey(apiKey);
-    console.log('✅ API Key Valid:', isValid); // Debug log
+    const userInfo = await this.authService.validateApiKey(apiKey);
 
-    if (!isValid) {
-      console.error('❌ Invalid API Key');
+    if (!userInfo || !userInfo.user) {
       throw new UnauthorizedException('Invalid API Key');
     }
 
+    request.user = userInfo.user; // ✅ Attach user info to request
     return true;
   }
 }

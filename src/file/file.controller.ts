@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Delete, Body, Query, UseGuards, Param, Res, StreamableFile, Header } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Body, Query, UseGuards, Param, Res, StreamableFile, Header, Patch, Request } from '@nestjs/common';
 import { FileService } from './file.service';
 
 import { ApiTags, ApiOperation, ApiQuery, ApiBody, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
@@ -7,12 +7,43 @@ import { Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as mime from 'mime-types'; // Import MIME type detection
+
 @ApiTags('File Management')
 @ApiBearerAuth() // Enables JWT authentication in Swagger
 @Controller('file')
 @UseGuards(CognitoAuthGuard) // Protect all routes
 export class FileController {
   constructor(private readonly fileService: FileService) {}
+  
+   @Post('folder')
+  @ApiOperation({ summary: 'Create a new folder' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', example: 'My New Folder' },
+        parentId: { type: 'string', nullable: true, example: 'folder-67890' },
+      },
+      required: ['name'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Folder created successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid request' })
+  async createFolder(
+	  @Body() body: { name: string; parentId?: string },
+	  @Request() req, // Gets the authenticated user
+	) {
+	  return await this.fileService.createFolder(body.name, body.parentId);
+	}
+
+  @Get('folder')
+  @ApiOperation({ summary: 'List folders' })
+  @ApiQuery({ name: 'parentId', required: false, description: 'Optional parent folder ID', example: 'folder-67890' })
+  @ApiResponse({ status: 200, description: 'List of folders' })
+  async listFolders(@Query('parentId') parentId?: string) {
+    return await this.fileService.listFolders(parentId);
+  }
+
    @Get('raw/:filePath')
   async getFile(@Param('filePath') filePath: string, @Res() res: Response): Promise<any> {
     try {
@@ -70,12 +101,60 @@ async getFiles(
   }
 
   @Post('create')
-  @ApiOperation({ summary: 'Create or update a file' })
-  @ApiBody({ schema: { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string' } } } })
-  @ApiResponse({ status: 201, description: 'File created/updated successfully' })
-  async createOrUpdate(@Body() body: { path: string; content?: string }) {
-    return this.fileService.createOrUpdateFile(body.path, body.content);
-  }
+@ApiOperation({ summary: 'Create a new file' })
+@ApiBody({
+  schema: {
+    type: 'object',
+    properties: {
+      name: { type: 'string', example: 'document.txt' },
+      content: { type: 'string', example: 'Hello, world!' },
+      parentId: { type: 'string', nullable: true, example: 'folder-67890' },
+    },
+    required: ['name', 'content'], // 'createdById' is not required in the request
+  },
+})
+@ApiResponse({ status: 201, description: 'File created successfully' })
+@ApiResponse({ status: 400, description: 'Invalid request' })
+async createFile(
+  @Body() body: { name: string; content: string; parentId?: string },
+  @Request() req, // Extracts the authenticated user
+) {
+  return await this.fileService.createFile(body.name, body.content, body.parentId);
+}
+
+  @Get(':id')
+@ApiOperation({ summary: 'Retrieve a file by ID' })
+@ApiResponse({ status: 200, description: 'File retrieved successfully' })
+@ApiResponse({ status: 404, description: 'File not found' })
+async getS3File(@Param('id') id: string) {
+  return await this.fileService.getFile(id);
+}
+  @Patch(':id')
+@ApiOperation({ summary: 'Update a file' })
+@ApiResponse({ status: 200, description: 'File updated successfully' })
+@ApiResponse({ status: 404, description: 'File not found' })
+@ApiBody({
+  schema: {
+    type: 'object',
+    properties: {
+      name: { type: 'string', example: 'updated-file.txt' },
+      content: { type: 'string', example: 'Updated content here...' },
+    },
+  },
+})
+async updateFile(
+  @Param('id') id: string,
+  @Body() body: { name?: string; content?: string }
+) {
+  return await this.fileService.updateFile(id, body.name, body.content);
+}
+  @Delete(':id')
+@ApiOperation({ summary: 'Delete a file' })
+@ApiResponse({ status: 200, description: 'File deleted successfully' })
+@ApiResponse({ status: 404, description: 'File not found' })
+async deleteFile(@Param('id') id: string) {
+  return await this.fileService.deleteFile(id);
+}
 
   @Get('read')
   @ApiOperation({ summary: 'Read file content' })

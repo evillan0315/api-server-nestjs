@@ -47,4 +47,57 @@ export class UpdateUserDto {
   })
   sub: string; // Add sub attribute to update based on the Cognito user identifier
 }
+export class UserDto {
+  @ApiProperty({
+    description: 'The unique identifier of the user',
+    type: String,
+  })
+  id: string;
 
+  @ApiProperty({
+    description: 'The email address of the user',
+    type: String,
+  })
+  email: string;
+
+  @ApiProperty({
+    description: 'The name of the user',
+    type: String,
+    required: false,
+  })
+  name?: string;
+
+  @ApiProperty({
+    description: 'The phone number of the user',
+    type: String,
+    required: false,
+  })
+  phone_number?: string;
+
+  @ApiProperty({
+    description: 'The address of the user',
+    type: String,
+    required: false,
+  })
+  address?: string;
+
+  @ApiProperty({
+    description: 'The gender of the user',
+    type: String,
+    required: false,
+  })
+  gender?: string;
+
+  @ApiProperty({
+    description: 'The username of the user (must be unique)',
+    type: String,
+    required: false,
+  })
+  username?: string;
+
+  @ApiProperty({
+    description: 'The timestamp when the user was created',
+    type: String,
+  })
+  createdAt: string;
+}

@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import { FileService } from './file.service';
 import { FileController } from './file.controller';
+import { PrismaModule } from '../prisma/prisma.module'; // Import PrismaModule
 
 @Module({
+  imports: [PrismaModule], // 👈 Ensure PrismaModule is imported
   providers: [
     FileService,
     {
@@ -14,3 +16,4 @@ import { FileController } from './file.controller';
   exports: [FileService],
 })
 export class FileModule {}
+

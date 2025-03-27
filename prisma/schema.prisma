@@ -102,15 +102,6 @@ model Documentation {
   content String?
 }
 
-model File {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  content   String
-  json      Json?
-  type      String
-  createdAt DateTime @default(now())
-}
-
 model Item {
   id          String    @id @default(uuid())
   name        String
@@ -228,12 +219,50 @@ model User {
   gender        String?
   username      String?   @unique
   createdAt     DateTime  @default(now())
-  cognitoId     String?   @unique
+  cognitoId     String?
   updatedAt     DateTime? @updatedAt
   Account       Account[]
   Chat          Chat[]
   Session       Session[]
   Task          Task[]
+  ApiKey        ApiKey[]
+  Folder        Folder[]
+  File          File[]
+}
+
+model Folder {
+  id          String   @id @default(uuid())
+  name        String
+  path        String   @unique
+  parentId    String?
+  parent      Folder?  @relation("FolderHierarchy", fields: [parentId], references: [id])
+  children    Folder[] @relation("FolderHierarchy")
+  files       File[]
+  createdById String // Foreign key for the user
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+}
+
+model File {
+  id          String    @id @default(uuid())
+  name        String
+  path        String    @unique
+  content     String
+  folderId    String?
+  folder      Folder?   @relation(fields: [folderId], references: [id])
+  createdById String // Foreign key for the user
+  createdBy   User      @relation(fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime? @updatedAt
+}
+
+model ApiKey {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  User      User?    @relation(fields: [userId], references: [id])
+  apiKey    String   @unique
+  expire    String?
+  createdAt DateTime @default(now())
 }
 
 model VerificationToken {

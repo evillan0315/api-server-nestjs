@@ -3,13 +3,15 @@ import { UsersService } from './users.service';
 import { UsersController } from './users.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthModule } from '../auth/auth.module';
-import { ApiKeyAuthGuard } from '../auth/guard/api-key.guard';
 
 @Module({
-  imports: [PrismaModule, forwardRef(() => AuthModule)], // ✅ Use forwardRef here too
-  providers: [UsersService, ApiKeyAuthGuard],
+  imports: [
+    PrismaModule, 
+    forwardRef(() => AuthModule), // ✅ Fix circular dependency
+  ],
+  providers: [UsersService], // ❌ Removed `ApiKeyAuthGuard` (should stay in AuthModule)
   controllers: [UsersController],
-  exports: [UsersService], // ✅ Export UsersService for AuthModule
+  exports: [UsersService], // ✅ Export only what’s needed
 })
 export class UsersModule {}
 

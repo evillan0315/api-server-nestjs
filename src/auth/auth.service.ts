@@ -82,48 +82,52 @@ export class AuthService {
   async cognitoLogin(): Promise<string> {
     return this.authUrl;
   }
-  async generateApiKey(userId: string): Promise<string> {
-    const apiKey = uuidv4();
+  async generateApiKey(user: any): Promise<any> {
+    /*const apiKey = uuidv4();
 
     const params = {
       TableName: process.env.DYNAMODB_API_KEYS,
       Item: {
-        userId: { S: userId },
+        user: { S: user },
         apiKey: { S: apiKey },
         createdAt: { S: new Date().toISOString() },
       },
-    };
+    };*/
+    if (!user.username) {
+        throw new UnauthorizedException('Failed to fetch  user info');
+      }
+    const uInfo = await this.userService.getProfile({"username":user.username});
+    return await this.userService.generateUserApiKey(uInfo);
 
-    await this.dynamoDb.send(new PutItemCommand(params));
 
-    return apiKey;
   }
-  async validateApiKey(apiKey: string): Promise<{ valid: boolean; user?: any }> {
-    // Query API keys table in DynamoDB
-    const params = {
-      TableName: process.env.DYNAMODB_API_KEYS,
-      Key: { apiKey: { S: apiKey } },
-    };
+  /*async generateApiKey(user: string): Promise<string> {
+	  const apiKey = uuidv4();
 
-    const response = await this.dynamoDb.send(new GetItemCommand(params));
-    console.log('Response from DynamoDB:', response);
+	  try {
+	    const newApiKey = await this.prisma.apiKey.create({
+	      data: {
+		user,
+		apiKey,
+	      },
+	    });
 
-    if (!response.Item) {
-      throw new UnauthorizedException('Invalid API key');
-    }
-
-    // Extract Cognito userId from stored API key (assuming it's stored as `userId`)
-    const cognitoId = response.Item.userId?.S;
-    console.log('Cognito UserId:', cognitoId);
-
-    if (!cognitoId) {
-      return { valid: true }; // No userId found, just return valid flag
-    }
+	    return newApiKey.apiKey;
+	  } catch (error) {
+	    console.error("Prisma API Key Insert Error:", error);
+	    throw new Error("Failed to store API key in database");
+	  }
+	}*/
+  async validateApiKey(apiKey: string): Promise<any> {
+    
 
     // Fetch user details from our UserService instead of Cognito directly
     try {
-      const user = await this.userService.getUserByCognitoId(cognitoId);
-      return { valid: true, user };
+      const user = await this.userService.validateUserApiKey(apiKey);
+      if(!user){
+      	throw new UnauthorizedException('Key is missing');
+      }
+      return user;
     } catch (error: any) {
       console.error('Failed to fetch user from UserService:', error);
       throw new Error(error.message || 'Failed to fetch user');
@@ -315,6 +319,7 @@ export class AuthService {
       const response = await axios.get(`${this.cognitoDomain}/oauth2/userInfo`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
+      console.log(response, 'getUserInfo');
       return response.data;
     } catch (error: any) {
       throw new Error(error.response?.data || 'Failed to fetch user info');
@@ -355,8 +360,18 @@ export class AuthService {
         },
       });
       const response = await this.cognitoClient.send(command);
+      if (!response.AuthenticationResult || !response.AuthenticationResult.AccessToken) {
+	  throw new Error("Authentication failed: No access token received");
+	}
 
-      return response.AuthenticationResult;
+	const uInfo = await this.userService.getProfile({"username":email, "email": email});
+	if(!uInfo){
+	  throw new Error("Authentication failed: No User link in prisma");
+	}
+	return {
+	  ...response.AuthenticationResult, // Spread the original result
+	  userData: uInfo, // Add the user info
+	};
     } catch (error: any) {
       throw new Error(error.message || 'Sign-in failed');
     }

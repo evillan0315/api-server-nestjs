@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import {
   CognitoIdentityProviderClient,
   AdminCreateUserCommand,
@@ -28,16 +28,53 @@ const userPoolId = process.env.AWS_USER_POOL_ID!;
 export class UsersService {
   constructor(private prisma: PrismaService) {}
   
+  async generateUserApiKey(user: any) {
+	  const apiKey = uuidv4();
 
+	  try {
+	    if (!user.id) {
+		throw new UnauthorizedException('Failed to fetch  user info');
+	      }
+	    const newApiKey = await this.prisma.apiKey.create({
+	      data: {
+		userId: user.id,
+		apiKey,
+	      },
+	    });
+
+	    return newApiKey.apiKey;
+	  } catch (error) {
+	    console.error("Prisma API Key Insert Error:", error);
+	    throw new Error("Failed to store API key in database");
+	  }
+  }
+  async validateUserApiKey(apiKey: string): Promise<{ valid: boolean; user?: any }> {
+  try {
+    const existingKey = await this.prisma.apiKey.findUnique({
+      where: { apiKey },
+      include: { User: true },
+    });
+
+    if (!existingKey) {
+      throw new UnauthorizedException("Invalid API Key");
+    }
+
+    return {
+      valid: true,
+      user: existingKey.User, // Include user details
+    };
+  } catch (error) {
+    console.error("API Key Validation Error:", error);
+    throw new UnauthorizedException("API Key validation failed");
+  }
+}
   async getProfile(user: any) {
 	  try {
 	
 	    
-            console.log("User object received:", JSON.stringify(user, null, 2));
-            console.log("User object received:", JSON.stringify(user));
-            console.log("Extracted username:", user?.username);
 
-            const username = user.username || user.email || user.userId; // Fallback to userId if username is missing
+
+            const username = user.email || user.username || user.userId; // Fallback to userId if username is missing
 
 		if (!username) {
 		  throw new Error("Username is required but missing.");
@@ -116,7 +153,7 @@ export class UsersService {
   })
   async createUser(email: string, name: string, password: string): Promise<AdminCreateUserCommandOutput> {
     try {
-      console.log(password, email);
+
       const command = new AdminCreateUserCommand({
         UserPoolId: process.env.AWS_USER_POOL_ID!,
         Username: email, // Use email as the unique identifier
@@ -206,9 +243,9 @@ export class UsersService {
       return null; // Return null so controller can throw 404
     }
   }
-  async getUserByCognitoId(cognitoId: string) {
+  async getUserByCognitoId(email: string) {
     const user = await this.prisma.user.findUnique({
-      where: { cognitoId },
+      where: { email },
     });
 
     if (!user) {

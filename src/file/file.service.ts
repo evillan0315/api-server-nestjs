@@ -1,16 +1,36 @@
-import { Injectable, NotFoundException, InternalServerErrorException, Inject } from '@nestjs/common';
+import { Injectable, NotFoundException, InternalServerErrorException, Inject, BadRequestException } from '@nestjs/common';
 import * as fs from 'fs-extra';
 import * as path from 'path';
+import { S3Client, PutObjectCommand, GetObjectCommand,DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { v4 as uuidv4 } from 'uuid';
+import { PrismaService } from '../prisma/prisma.service';
+import * as dotenv from 'dotenv';
+import { REQUEST } from '@nestjs/core';
+import { Request } from 'express';
+import { Readable } from 'stream';
+import { UserDto } from '../users/dto/users.dto';
 
-
+dotenv.config();
 @Injectable()
 export class FileService {
-
+  //private readonly basePath = path.join(__dirname, '../storage'); // Base storage path
+  private readonly s3 = new S3Client({
+  region: process.env.AWS_REGION || 'us-east-1', // Default region if undefined
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? '',
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? '',
+  },
+});
 
   constructor(
     @Inject('EXCLUDED_FOLDERS') private readonly EXCLUDED_FOLDERS: string[],
+    private prisma: PrismaService,
+     @Inject(REQUEST) private readonly request: Request & { user?: UserDto } // Ensure TypeScript sees the correct structure
   ) {}
-
+  private readonly bucketName = process.env.S3_BUCKET_NAME; // Bucket name from .env
+  private get userId(): string | undefined {
+    return this.request.user?.id; // Now TypeScript should recognize `id`
+  }
   private getFileTree(dir: string, recursive: boolean = false): any[] {
     if (!fs.existsSync(dir)) return [];
 
@@ -29,7 +49,249 @@ export class FileService {
         };
       });
   }
+  async createFolder(name: string, parentId?: string) {
+  if (!this.userId) {
+	  throw new BadRequestException("User ID is required");
+	}
+    let path = `/${name}`;
 
+    if (parentId) {
+      const parentFolder = await this.prisma.folder.findUnique({
+        where: { id: parentId },
+      });
+
+      if (!parentFolder) {
+        throw new NotFoundException(`Parent folder not found`);
+      }
+
+      path = `${parentFolder.path}/${name}`;
+    }
+
+    return this.prisma.folder.create({
+	  data: {
+	    name,
+	    path,
+	    createdById: this.userId, // Ensure it's a string (consider throwing an error if undefined)
+	    parentId: parentId || null,
+	  },
+	});
+  }
+  
+  async listFolders(parentId?: string) {
+  return this.prisma.folder.findMany({
+    where: { 
+      parentId: parentId || null,
+      createdById: this.userId // Filter by user ID
+    },
+    include: { files: {
+        select: { id: true, name: true, path: true } // Select only the necessary fields
+      }, children: true },
+  });
+}
+  async createFile(name: string, content: string, folderId?: string) {
+  if (!this.userId) {
+	  throw new BadRequestException("User ID is required");
+	}
+    // Ensure parent folder exists (if provided)
+    if (folderId) {
+      const parentFolder = await this.prisma.folder.findUnique({ where: { id: folderId } });
+      if (!parentFolder) throw new NotFoundException('Parent folder does not exist');
+    }
+
+    // Generate a unique file key for S3
+    const uniqueId = uuidv4();
+    const fileKey = folderId ? `${folderId}/${uniqueId}-${name}` : `${uniqueId}-${name}`;
+
+    // Upload file to S3
+    try {
+      await this.s3.send(
+        new PutObjectCommand({
+          Bucket: this.bucketName,
+          Key: fileKey,
+          Body: content,
+          ContentType: 'text/plain', // Adjust based on file type
+        })
+      );
+    } catch (error) {
+      throw new BadRequestException('Failed to upload file to S3');
+    }
+
+    // Save metadata in Prisma database
+    const file = await this.prisma.file.create({
+      data: {
+        name,
+        path: `s3://${this.bucketName}/${fileKey}`,
+        content, // Optional: Store file content in DB (remove if unnecessary)
+        createdById: this.userId, // Filter by user ID
+        folderId: folderId || null,
+      },
+    });
+
+    return { message: 'File uploaded successfully', file };
+  }
+  async getFile(id: string) {
+    // Step 1: Fetch file metadata from Prisma
+    const file = await this.prisma.file.findUnique({
+      where: { id, createdById: this.userId  },
+    });
+
+    if (!file) {
+      throw new NotFoundException('File not found');
+    }
+
+    const fileKey = file.path.replace(`s3://${this.bucketName}/`, '');
+
+    // Step 2: Fetch file content from S3
+    try {
+      const { Body } = await this.s3.send(
+        new GetObjectCommand({
+          Bucket: this.bucketName,
+          Key: fileKey,
+        })
+      );
+
+      // Step 3: Convert the stream into a string
+      const streamToString = (stream: Readable): Promise<string> =>
+        new Promise((resolve, reject) => {
+          const chunks: Buffer[] = [];
+          stream.on('data', (chunk) => chunks.push(chunk));
+          stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+          stream.on('error', reject);
+        });
+
+      return {
+        name: file.name,
+        content: await streamToString(Body as Readable),
+      };
+    } catch (error) {
+      throw new NotFoundException('File could not be retrieved from S3');
+    }
+  }
+   async updateFile(id: string, newName?: string, newContent?: string) {
+    const file = await this.prisma.file.findUnique({ where: { id } });
+
+    if (!file) {
+      throw new NotFoundException('File not found');
+    }
+
+    let updatedPath = file.path;
+    let fileKey = file.path.replace(`s3://${this.bucketName}/`, '');
+
+    // If name is changed, generate a new S3 key
+    if (newName) {
+      const newFileKey = `${uuidv4()}-${newName}`;
+
+      // Copy the old file content to a new file in S3
+      try {
+        await this.s3.send(
+          new PutObjectCommand({
+            Bucket: this.bucketName,
+            Key: newFileKey,
+            Body: newContent || file.content,
+            ContentType: 'text/plain',
+          })
+        );
+
+        // Delete the old file from S3
+        await this.s3.send(
+          new DeleteObjectCommand({
+            Bucket: this.bucketName,
+            Key: fileKey,
+          })
+        );
+
+        fileKey = newFileKey;
+        updatedPath = `s3://${this.bucketName}/${newFileKey}`;
+      } catch (error) {
+        throw new BadRequestException('Error updating file in S3');
+      }
+    } else if (newContent) {
+      // Just update the content in S3
+      try {
+        await this.s3.send(
+          new PutObjectCommand({
+            Bucket: this.bucketName,
+            Key: fileKey,
+            Body: newContent,
+            ContentType: 'text/plain',
+          })
+        );
+      } catch (error) {
+        throw new BadRequestException('Error updating file content in S3');
+      }
+    }
+
+    return this.prisma.file.update({
+      where: { id },
+      data: {
+        name: newName || file.name,
+        path: updatedPath,
+        content: newContent || file.content,
+      },
+    });
+  }
+  async deleteFile(id: string) {
+	  const file = await this.prisma.file.findUnique({ where: { id } });
+
+	  if (!file) {
+	    throw new NotFoundException('File not found');
+	  }
+
+	  const fileKey = file.path.replace(`s3://${this.bucketName}/`, '');
+
+	  try {
+	    // Delete file from S3
+	    await this.s3.send(
+	      new DeleteObjectCommand({
+		Bucket: this.bucketName,
+		Key: fileKey,
+	      })
+	    );
+
+	    // Delete metadata from database
+	    await this.prisma.file.delete({ where: { id } });
+
+	    return { message: 'File deleted successfully' };
+	  } catch (error) {
+	    throw new BadRequestException('Error deleting file');
+	  }
+	}
+ /* async createFile(name: string, content: string, createdById: string, folderId?: string) {
+    // Ensure folder exists if folderId is provided
+    let folderPath = this.basePath;
+    if (folderId) {
+      const parentFolder = await this.prisma.folder.findUnique({ where: { id: folderId } });
+      if (!parentFolder) throw new NotFoundException('Parent folder does not exist');
+      folderPath = path.join(this.basePath, folderId);
+    }
+
+    // Ensure the folder path exists in the filesystem
+    if (!fs.existsSync(folderPath)) {
+      fs.mkdirSync(folderPath, { recursive: true });
+    }
+
+    const filePath = path.join(folderPath, name);
+
+    // Check if file already exists in DB
+    const existingFile = await this.prisma.file.findFirst({ where: { path: filePath } });
+    if (existingFile) throw new BadRequestException('File already exists');
+
+    // Write file to disk
+    fs.writeFileSync(filePath, content, 'utf8');
+
+    // Save metadata in DB
+    const file = await this.prisma.file.create({
+      data: {
+        name,
+        path: filePath,
+        content,
+        createdById,
+        folderId: folderId || null,
+      },
+    });
+
+    return { message: 'File created successfully', file };
+  }*/
   async getFilesByDirectory(directory: string = '', recursive: boolean = false): Promise<any> {
     try {
       const directoryPath = directory ? directory : process.cwd();
@@ -58,14 +320,14 @@ export class FileService {
     }
   }
 
-  async createFile(filePath: string, content: string) {
+  /*async createFile(filePath: string, content: string) {
     try {
       await fs.promises.writeFile(filePath, content, "utf-8");
       return { message: "File saved successfully", path: filePath };
     } catch (error) {
       return { error: (error as Error).message };
     }
-  }
+  }*/
   /**
    * Creates or updates a file recursively.
    * @param filePath - File path.

@@ -8,9 +8,9 @@ import { GoogleStrategy } from './strategy/google.strategy';
 import { GithubStrategy } from './strategy/github.strategy';
 import { GoogleAuthGuard, CognitoAuthGuard, GithubAuthGuard, JwtAuthGuard } from './guard/auth.guard';
 import { UsersModule } from '../users/users.module';
-import { ApiTags } from '@nestjs/swagger';
+import { PrismaModule } from '../prisma/prisma.module';  // ✅ Add PrismaModule
+import { ApiKeyAuthGuard } from '../auth/guard/api-key.guard';
 
-@ApiTags('Auth')
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -21,8 +21,10 @@ import { ApiTags } from '@nestjs/swagger';
       secret: process.env.JWT_SECRET || 'defaultSecret',
       signOptions: { expiresIn: '1h' },
     }),
-    forwardRef(() => UsersModule), // ✅ Fix circular dependency
+    forwardRef(() => UsersModule),
+    PrismaModule,  // ✅ Add this to fix missing dependency
   ],
+  controllers: [AuthController],
   providers: [
     AuthService,
     JwtStrategy,
@@ -32,13 +34,9 @@ import { ApiTags } from '@nestjs/swagger';
     GoogleAuthGuard,
     JwtAuthGuard,
     GithubAuthGuard,
+    ApiKeyAuthGuard,
   ],
-  controllers: [AuthController],
   exports: [
-    CognitoAuthGuard,
-    GoogleAuthGuard,
-    GithubAuthGuard,
-    JwtAuthGuard,
     AuthService,
     JwtModule,
   ],
