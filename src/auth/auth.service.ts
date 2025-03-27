@@ -46,10 +46,11 @@ export class AuthService {
   // JWKS for token verification
   private readonly jwksUri: string;
   private readonly jwks: jwksClient.JwksClient;
-
+  private authUrl: string;
   constructor(
     private readonly jwtService: JwtService,
     private readonly userService: UsersService, // Fix: Ensure userService is injected
+    
   ) {
     // Initialize AWS clients
     this.dynamoDb = new DynamoDBClient({ region: process.env.AWS_REGION });
@@ -62,7 +63,7 @@ export class AuthService {
     this.clientSecret = this.getEnvVar('COGNITO_CLIENT_SECRET');
     this.redirectUri = this.getEnvVar('COGNITO_REDIRECT_URI');
     this.googleClientSecret = this.getEnvVar('GOOGLE_CLIENT_SECRET');
-
+    this.authUrl = `${this.cognitoDomain}/login?client_id=${this.clientId}&response_type=code&scope=email+openid&redirect_uri=${this.redirectUri}`;
     // JWKS Client for Cognito token validation
     this.jwksUri = `https://cognito-idp.${process.env.AWS_REGION}.amazonaws.com/${this.userPoolId}/.well-known/jwks.json`;
     this.jwks = jwksClient({ jwksUri: this.jwksUri });
@@ -78,7 +79,9 @@ export class AuthService {
     }
     return value;
   }
-  
+  async cognitoLogin(): Promise<string> {
+    return this.authUrl;
+  }
   async generateApiKey(userId: string): Promise<string> {
     const apiKey = uuidv4();
 

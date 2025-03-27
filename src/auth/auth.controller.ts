@@ -22,6 +22,11 @@ interface GoogleUser {
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
   
+  @Get('cognito/login')
+    async cognitoLogin(@Res() res: Response) {
+        const authUrl = await this.authService.cognitoLogin();
+        return res.redirect(authUrl);
+    }
   @UseGuards(JwtAuthGuard)
   @Post('generate/api/key')
   @ApiOperation({ summary: 'Generate API Key' })
@@ -267,7 +272,7 @@ async validateApiKey(@Query('apiKey') apiKey: string) {
   return resp;
     //return this.authService.signInUser(signInDto.email, signInDto.password);
   }
-
+  
   @Post('refresh-token')
   @ApiOperation({ summary: 'Refresh Token' })
   @ApiResponse({ status: 200, description: 'Token refreshed successfully' })
