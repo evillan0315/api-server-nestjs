@@ -2,7 +2,7 @@
 import { Controller, Post, Body } from '@nestjs/common';
 import { ChatgptService } from './chatgpt.service';
 
-@Controller('chatgpt')
+@Controller('api/chatgpt')
 export class ChatgptController {
   constructor(private readonly chatgptService: ChatgptService) {}
 

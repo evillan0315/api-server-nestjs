@@ -10,7 +10,7 @@ import * as mime from 'mime-types'; // Import MIME type detection
 
 @ApiTags('File Management')
 @ApiBearerAuth() // Enables JWT authentication in Swagger
-@Controller('file')
+@Controller('api/file')
 @UseGuards(CognitoAuthGuard) // Protect all routes
 export class FileController {
   constructor(private readonly fileService: FileService) {}
@@ -56,7 +56,7 @@ export class FileController {
   @ApiResponse({ status: 200, description: 'List of folders and files' })
   async getFolderByPath(@Param('path') path: string, @Req() req: Request) {
    
-    return await this.fileService.getFolderByPath(`${path}`);
+    return await this.fileService.getFolderByPath(`/${path}`);
   }
    @Get('raw/:filePath')
   async getFile(@Param('filePath') filePath: string, @Res() res: Response): Promise<any> {

@@ -39,7 +39,7 @@ export class AuthService {
   // Google OAuth
   private readonly googleClientSecret: string;
   private readonly googleUserInfoUrl = 'https://www.googleapis.com/oauth2/v3/userinfo';
-
+  private readonly googleTokenUrl = 'https://oauth2.googleapis.com/token';
   // GitHub OAuth
   private readonly githubUserInfoUrl = 'https://api.github.com/user';
 
@@ -185,8 +185,18 @@ export class AuthService {
 
       // Verify token using the correct signing key
       const payload = jwt.verify(token, signingKey, { algorithms: ['RS256'] });
+      // Type guard to check if it's a JwtPayload
+	    if (typeof payload === "string" || !("username" in payload)) {
+	      throw new Error("Authentication failed: No User");
+	    }
 
-      return payload; // Return decoded user information
+	    const uInfo = await this.userService.getProfile({ "username": payload.username });
+	    if (!uInfo) {
+	      throw new Error("Authentication failed: No User link in prisma");
+	    }
+
+	    return uInfo;
+
     } catch (error) {
       console.error('Token validation failed:', error);
       throw new UnauthorizedException('Invalid or expired token');
@@ -227,7 +237,7 @@ export class AuthService {
       if (!response.data) {
         throw new UnauthorizedException('Failed to fetch GitHub user info');
       }
-
+      
       return {
         id: response.data.id,
         username: response.data.login,
@@ -242,32 +252,60 @@ export class AuthService {
   @ApiResponse({ status: 200, description: 'Google login successful' })
   async googleLogin(code: string) {
     try {
-      const tokenResponse = await axios.post(
-        `${this.cognitoDomain}/oauth2/token`,
+      const response = await axios.post(
+        this.googleTokenUrl,
+        {
+          code,
+          client_id: process.env.GOOGLE_CLIENT_ID,
+          client_secret: process.env.GOOGLE_CLIENT_SECRET,
+          redirect_uri: this.redirectUri,
+          grant_type: 'authorization_code',
+        },
+        {
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        },
+      );
+      console.log(response, 'response');
+      return response.data;
+    } catch (error: any) {
+      throw new Error(error.response?.data || 'Google login failed');
+    }
+  }
+  async exchangeCodeForToken(code: string): Promise<any> {
+    const tokenUrl = `${this.cognitoDomain}/oauth2/token`;
+    console.log(tokenUrl, 'tokenUrl');
+    try {
+      const response = await axios.post(
+        tokenUrl,
         new URLSearchParams({
           grant_type: 'authorization_code',
           client_id: this.clientId,
           client_secret: this.clientSecret,
-          code: code,
           redirect_uri: this.redirectUri,
+          code,
         }),
-        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+        {
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        }
       );
-      return tokenResponse.data;
-    } catch (error: any) {
-      throw new Error(error.response?.data || 'Google login failed');
+      console.log(response, 'response');
+      return response.data;
+    } catch (error) {
+      console.error('Token exchange failed:', error.response?.data || error.message);
+      throw new Error('Failed to exchange authorization code for tokens');
     }
   }
   @ApiOperation({ summary: 'Validate Google login' })
   @ApiResponse({ status: 200, description: 'Google login validated successfully' })
   async validateGoogleLogin(profile: any): Promise<User> {
     const { id, emails, displayName, photos } = profile;
-    return profile;
+    console.log(profile, 'profile');
+    //return profile;
     //console.log(profile, 'profile');
     // Check if user already exists based on the Google ID
-    /*let user = await this.userService.findByGoogleId(id);
+    let user = await this.userService.getProfile({"username":emails, "email": emails});
 
-    if (!user) {
+    /*if (!user) {
       // If user doesn't exist, create a new user
       user = await this.userService.createUser({
         googleId: id,
@@ -275,10 +313,10 @@ export class AuthService {
         name: displayName,
         photoUrl: photos ? photos[0].value : null, // Store the profile photo URL if available
       });
-    } 
+    } */
 
     // Return the user object or user data as per your app's needs
-    return user;*/
+    return user;
   }
   @ApiOperation({ summary: 'Get Google User Info' })
   @ApiResponse({ status: 200, description: 'Google User info retrieved successfully' })
@@ -319,7 +357,7 @@ export class AuthService {
       const response = await axios.get(`${this.cognitoDomain}/oauth2/userInfo`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
-      console.log(response, 'getUserInfo');
+      
       return response.data;
     } catch (error: any) {
       throw new Error(error.response?.data || 'Failed to fetch user info');

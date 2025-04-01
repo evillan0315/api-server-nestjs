@@ -28,16 +28,25 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     super({
       jwtFromRequest: (req) => {
-        const authHeader = req.headers.authorization;
-        if (authHeader && authHeader.startsWith('Bearer ')) {
-          return authHeader.split(' ')[1];
-        }
-        if (req && req.cookies) {
-          return req.cookies['access_token'];
-        }
-        return null;
-      },
+	  console.log('Incoming Headers jwtFromRequest:', req.headers);
+          console.log('Incoming Headers jwtFromRequest cookies:', req.cookies);
+	  const authHeader = req.headers.authorization;
+	  if (authHeader && authHeader.startsWith('Bearer ')) {
+	    console.log('Extracted JWT:', authHeader.split(' ')[1]);
+	    return authHeader.split(' ')[1];
+	  }
+
+	  if (req && req.cookies) {
+	    console.log('JWT from Cookies:', req.cookies['access_token']);
+	    return req.cookies['access_token'];
+	  }
+
+	  console.warn('No JWT Found in Headers or Cookies');
+	  return null;
+	},
       secretOrKeyProvider: (request, rawJwtToken, done) => {
+        console.log('Raw JWT Token:', rawJwtToken); // Debugging
+        console.log('Raw JWT request:', request); // Debugging
         try {
           const decodedJwt = jwt.decode(rawJwtToken, { complete: true }) as jwt.Jwt | null;
           if (!decodedJwt || !decodedJwt.header || !decodedJwt.payload) {
@@ -82,7 +91,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 	    OR: [
 	      { cognitoId: payload.sub },        // Search by Auth ID (Cognito/Auth0)
 	      { email: payload.email },        // Search by Email
-	      { username: payload.username }   // Search by Username
+	      { username: payload.username || payload.email }   // Search by Username
 	    ]
 	  }
 	});

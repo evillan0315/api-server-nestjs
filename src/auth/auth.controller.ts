@@ -17,7 +17,7 @@ interface GoogleUser {
 }
 @ApiTags('Auth')
 @ApiBearerAuth()  // Swagger UI will expect the Authorization token in the header
-@Controller('auth')
+@Controller('api/auth')
 
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
@@ -39,7 +39,7 @@ export class AuthController {
     if (!user) {
       throw new UnauthorizedException('Invalid session');
     }
-
+    
     return res.json({ user });
   }
 
@@ -267,7 +267,25 @@ async validateApiKey(@Query('apiKey') apiKey: string) {
   async getUserInfo(@Body() userInfo: any) {
     return this.authService.getUserInfo(userInfo);
   }
+  @Get('callback')
+  @UseGuards(CognitoAuthGuard)
+  @ApiOperation({ summary: 'Handle Cognito Google OAuth callback' })
+  @ApiResponse({ status: 200, description: 'Successfully logged in' })
+  @ApiResponse({ status: 400, description: 'Invalid login callback' })
+  async googleAuthCallback(@Query('code') code: string, @Request()  req: ExpressRequest) {
+    if (!code) {
+      throw new Error('No authorization code provided');
+    }
+    console.log(req, 'req.user');
+    const tokens = await this.authService.googleLogin(code);
+    console.log(tokens, 'tokens');
+    const userInfo = await this.authService.getUserInfo(tokens.access_token);
 
+    return {
+      user: userInfo,
+      tokens,
+    };
+  }
   @Post('signup')
   @ApiOperation({ summary: 'Sign-up' })
   @ApiResponse({ status: 200, description: 'User signed up successfully' })

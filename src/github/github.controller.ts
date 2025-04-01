@@ -1,4 +1,4 @@
 import { Controller } from '@nestjs/common';
 
-@Controller('github')
+@Controller('api/github')
 export class GithubController {}
