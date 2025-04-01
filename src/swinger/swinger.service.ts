@@ -44,7 +44,13 @@ export class SwingerService {
 
   async findAll(limit?: number) {
   return this.prisma.swingers.findMany({
-    take: limit, // Limits the number of results if 'limit' is provided
+    take: limit,
+    select: {
+    id: true,
+    name: true,
+    email: true,
+    swingerID: true,
+  }, // Limits the number of results if 'limit' is provided
   });
 }
 
@@ -81,13 +87,13 @@ export class SwingerService {
         }
       });
 
-      await this.saveToDatabase(uniqueJsonData);
+      return await this.saveToDatabase(uniqueJsonData);
     } catch (error) {
       console.error('Error fetching data:', error);
     }
   }
 
-  async saveToDatabase(data: JsonData[]): Promise<void> {
+  async saveToDatabase(data: JsonData[]): Promise<any> {
     try {
       for (const jsonData of data) {
         await this.prisma.swingers.upsert({
@@ -101,7 +107,7 @@ export class SwingerService {
           },
         });
       }
-      console.log('Data successfully saved to the database');
+      return {"message": 'Data successfully saved to the database'};
     } catch (error) {
       console.error('Error saving data to the database:', error);
     } finally {

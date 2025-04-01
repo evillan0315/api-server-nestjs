@@ -1,5 +1,5 @@
 import { Controller, Post, Param, Body, Req, Res, Get, Request, UseGuards, UnauthorizedException, Query } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags, ApiBearerAuth, ApiBody, ApiQuery } from '@nestjs/swagger';
+import { ApiOperation, ApiResponse, ApiTags, ApiBearerAuth, ApiBody, ApiQuery, ApiCookieAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { AuthSignUpDto, AuthSignInDto, RefreshTokenDto, ValidateTokenDto } from './dto/auth.dto';
 import { GoogleUserInfoDto } from './dto/google-userinfo.dto';
@@ -21,12 +21,35 @@ interface GoogleUser {
 
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
-  
-  @Get('cognito/login')
-    async cognitoLogin(@Res() res: Response) {
-        const authUrl = await this.authService.cognitoLogin();
-        return res.redirect(authUrl);
+  @Get('session')
+  @ApiOperation({ summary: 'Get user session' })
+  @ApiResponse({ status: 200, description: 'User session retrieved successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiCookieAuth('token') // Indicates that a cookie-based auth is required
+  async getSession(@Req() req: ExpressRequest, @Res() res: Response) {
+    //console.log(req.cookies, 'req.cookies?')
+    const token = req.cookies?.access_token; // Extract token from cookies
+
+    if (!token) {
+      throw new UnauthorizedException('No session found');
     }
+
+    const user = await this.authService.validateToken(token);
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid session');
+    }
+
+    return res.json({ user });
+  }
+
+  @Get('cognito/login')
+  @ApiOperation({ summary: 'Redirect to Cognito login' })
+  @ApiResponse({ status: 302, description: 'Redirecting to Cognito login' })
+  async cognitoLogin(@Res() res: Response) {
+    const authUrl = await this.authService.cognitoLogin();
+    return res.redirect(authUrl);
+  }
   @UseGuards(JwtAuthGuard)
   @Post('generate/api/key')
   @ApiOperation({ summary: 'Generate API Key' })

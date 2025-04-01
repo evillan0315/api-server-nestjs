@@ -1,9 +1,9 @@
-import { Controller, Post, Get, Delete, Body, Query, UseGuards, Param, Res, StreamableFile, Header, Patch, Request } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Body, Query, UseGuards, Param, Res, StreamableFile, Header, Patch, Req } from '@nestjs/common';
 import { FileService } from './file.service';
 
 import { ApiTags, ApiOperation, ApiQuery, ApiBody, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { CognitoAuthGuard } from '../auth/guard/auth.guard';
-import { Response } from 'express';
+import { Response, Request } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as mime from 'mime-types'; // Import MIME type detection
@@ -30,8 +30,7 @@ export class FileController {
   @ApiResponse({ status: 201, description: 'Folder created successfully' })
   @ApiResponse({ status: 400, description: 'Invalid request' })
   async createFolder(
-	  @Body() body: { name: string; parentId?: string },
-	  @Request() req, // Gets the authenticated user
+	  @Body() body: { name: string; parentId?: string }
 	) {
 	  return await this.fileService.createFolder(body.name, body.parentId);
 	}
@@ -43,7 +42,22 @@ export class FileController {
   async listFolders(@Query('parentId') parentId?: string) {
     return await this.fileService.listFolders(parentId);
   }
-
+  /*@Get('folder/:path')
+	@ApiOperation({ summary: 'Get List folders by path' })
+	@ApiQuery({ name: 'path', required: false, description: 'Optional parent folder ID', example: '/' })
+	@ApiResponse({ status: 200, description: 'List of folders' })
+	async getFolderByPath(@Query('path') path?: string)
+	 {
+	  return await this.fileService.getFolderByPath(path ?? '/');
+	}*/
+   @Get('folder:path')
+ 
+  @ApiOperation({ summary: 'Get folder contents by path' })
+  @ApiResponse({ status: 200, description: 'List of folders and files' })
+  async getFolderByPath(@Param('path') path: string, @Req() req: Request) {
+   
+    return await this.fileService.getFolderByPath(`${path}`);
+  }
    @Get('raw/:filePath')
   async getFile(@Param('filePath') filePath: string, @Res() res: Response): Promise<any> {
     try {
@@ -116,8 +130,7 @@ async getFiles(
 @ApiResponse({ status: 201, description: 'File created successfully' })
 @ApiResponse({ status: 400, description: 'Invalid request' })
 async createFile(
-  @Body() body: { name: string; content: string; parentId?: string },
-  @Request() req, // Extracts the authenticated user
+  @Body() body: { name: string; content: string; parentId?: string }
 ) {
   return await this.fileService.createFile(body.name, body.content, body.parentId);
 }

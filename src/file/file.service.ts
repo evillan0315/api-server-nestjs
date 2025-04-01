@@ -76,7 +76,20 @@ export class FileService {
 	  },
 	});
   }
-  
+  async getFolderByPath(path: string) {
+    return this.prisma.folder.findFirst({
+      where: { 
+        path, 
+        createdById: this.userId // Ensure user only accesses their own folders
+      },
+      include: {
+        files: {
+          select: { id: true, name: true, path: true } // Select only necessary fields
+        },
+        children: true // Include subfolders
+      },
+    });
+  }
   async listFolders(parentId?: string) {
   return this.prisma.folder.findMany({
     where: { 
